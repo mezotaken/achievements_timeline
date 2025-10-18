@@ -205,6 +205,8 @@ class AchievementsTimelineApp(QtWidgets.QMainWindow):
         self.replay_button.clicked.connect(self.toggle_replay)
         # Edit actions
         self.replay_time_value.textEdited.connect(self.update_replay_data)
+        # Replay Timer
+        self.replay_timer = None
 
 
     def fetch_data(self):
@@ -300,9 +302,11 @@ class AchievementsTimelineApp(QtWidgets.QMainWindow):
         self.recalculate_timeline(0)
 
 
-    def update_replay_data(self):
+    def update_replay_data(self, text=None, replay_time_shift=0):
+        if text is None:
+            text = self.replay_time_value.text()
         try:
-            current_time = TimeFormatter.hf_to_ts(self.replay_time_value.text())
+            current_time = TimeFormatter.hf_to_ts(text)
             self.replay_time_value.setStyleSheet('color: black;')
         except Exception:
             self.replay_time_value.setStyleSheet('color: red;')
@@ -310,26 +314,42 @@ class AchievementsTimelineApp(QtWidgets.QMainWindow):
         total_achievement_count = self.timeline.count() - 2
         last_row: AchievementRow = self.timeline.itemAt(total_achievement_count).widget()
         total_time = TimeFormatter.hf_to_ts(last_row.unlock_time.text())
+        current_time += replay_time_shift
+        if current_time >= total_time:
+            current_time = total_time
+            self.replay_timer.stop()
+            self.replay_button.setChecked(False)
         current_achievemnt_count = 0
         for i in range(self.timeline.count() - 1):
             row: AchievementRow = self.timeline.itemAt(i).widget()
             unlock_time = TimeFormatter.hf_to_ts(row.unlock_time.text())
-            if current_time > unlock_time:
+            if current_time >= unlock_time:
+                if current_time - unlock_time < 3 and replay_time_shift > 0:
+                    QtWidgets.QApplication.beep()
                 current_achievemnt_count += 1
                 row.setStyleSheet("background-color: lightgreen;")
             else:
                 row.setStyleSheet("background-color: white;")
         QtWidgets.QApplication.processEvents()
+        if replay_time_shift != 0:
+            self.replay_time_value.setText(TimeFormatter.ts_to_hf(current_time))
         self.replay_time_postfix.setText(f' / {TimeFormatter.ts_to_hf(total_time)} | {round(current_time/total_time*100, 1)}%')
         self.replay_ach_count_value.setText(str(current_achievemnt_count))
         self.replay_ach_count_postfix.setText(f' / {total_achievement_count} | {round(current_achievemnt_count/total_achievement_count*100, 1)}%')
 
 
+    def advance_replay_time(self):
+        self.update_replay_data(replay_time_shift=1)
+
+
     def toggle_replay(self, checked):
         if checked:
-            print('start')
+            self.replay_timer = QtCore.QTimer(self)
+            self.replay_timer.timeout.connect(self.advance_replay_time)
+            self.replay_timer.start(1000)
         else:
-            print('stop')
+            if self.replay_timer is not None:
+                self.replay_timer.stop()
 
 
 if __name__ == '__main__':
