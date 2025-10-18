@@ -7,5 +7,6 @@
 
 ## TODO
 I only needed this for a single game, so it won't be actively developed. But still
-1) Integrate SAM functionality and make the process fully automatic.
-2) Heatmap with legend for time ranges in between achievements.
+1) Integrate SAM functionality and make the unlocking process fully automatic.
+2) Heatmap with a legend for time ranges in between achievements.
+3) Separate data storage models from Qt view models.

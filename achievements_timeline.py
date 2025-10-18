@@ -1,12 +1,11 @@
 import requests
 import sys
-import datetime
 import json
 import os
-from PyQt6 import QtWidgets, QtGui, uic, QtCore
-from PyQt6.QtWidgets import QSpacerItem, QSizePolicy
 import asyncio
 import aiohttp
+from PyQt6 import QtWidgets, QtGui, uic, QtCore
+from PyQt6.QtWidgets import QSpacerItem, QSizePolicy
 
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
@@ -146,7 +145,7 @@ class AchievementRow(QtWidgets.QWidget):
         self.offset.setFixedWidth(100)
         self.offset.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         self.offset.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self.offset.textChanged.connect(self.on_text_changed)
+        self.offset.textEdited.connect(self.on_text_edited)
         layout.addWidget(self.offset)
         self.unlock_time = QtWidgets.QLabel(TimeFormatter.ts_to_hf(original_time))
         self.unlock_time.setFixedWidth(100)
@@ -173,7 +172,7 @@ class AchievementRow(QtWidgets.QWidget):
         self.setLayout(layout)
 
 
-    def on_text_changed(self, text):
+    def on_text_edited(self, text):
         self.callback(self.idx)
 
 
@@ -192,10 +191,20 @@ class AchievementsTimelineApp(QtWidgets.QMainWindow):
         self.orig_pt_value: QtWidgets.QLabel
         self.new_pt_value: QtWidgets.QLabel
         self.timeline_scroll: QtWidgets.QScrollArea
+        self.timeline = self.timeline_scroll.widget().layout()
+        self.replay_button: QtWidgets.QPushButton
+        self.replay_time_value: QtWidgets.QLineEdit
+        self.replay_time_postfix: QtWidgets.QLabel
+        self.replay_ach_count_value: QtWidgets.QLabel
+        self.replay_ach_count_postfix: QtWidgets.QLabel
+
         # Button actions
         self.fetch_button.clicked.connect(self.fetch_data)
         self.save_button.clicked.connect(self.save_data)
         self.load_button.clicked.connect(self.load_data)
+        self.replay_button.clicked.connect(self.toggle_replay)
+        # Edit actions
+        self.replay_time_value.textEdited.connect(self.update_replay_data)
 
 
     def fetch_data(self):
@@ -215,26 +224,31 @@ class AchievementsTimelineApp(QtWidgets.QMainWindow):
         if not unlocked:
             return
 
-        layout = self.timeline_scroll.widget().layout()
-        for i in reversed(range(layout.count()-1)):
-            layout.itemAt(i).widget().deleteLater()
+        for i in reversed(range(self.timeline.count())):
+            item = self.timeline.itemAt(i)
+            self.timeline.removeItem(item)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.spacerItem():
+                del item
         base_time = unlocked[0]['unlocktime']
         cur_time = 0
         for i, a in enumerate(unlocked):
             prev_time = cur_time
             cur_time = a['unlocktime']-base_time
-            layout.addWidget(AchievementRow(i, cur_time - prev_time, cur_time, a['icon'], a['name'], self.recalculate_timeline))
-        layout.addWidget(AchievementRow(len(unlocked), 0, cur_time, None, 'THE END', self.recalculate_timeline))
+            self.timeline.addWidget(AchievementRow(i, cur_time - prev_time, cur_time, a['icon'], a['name'], self.recalculate_timeline))
+        self.timeline.addWidget(AchievementRow(len(unlocked), 0, cur_time, None, 'N/A', self.recalculate_timeline))
         self.new_pt_value.setText(TimeFormatter.ts_to_hf(cur_time))
         spacer = QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
-        layout.addItem(spacer)
+        self.timeline.addItem(spacer)
+        self.replay_time_value.setText('0s')
+        self.update_replay_data()
 
 
     def recalculate_timeline(self, idx):
-        layout = self.timeline_scroll.widget().layout()
         cur_time = 0
-        for i in range(idx, layout.count() - 1):
-            row: AchievementRow = layout.itemAt(i).widget()
+        for i in range(idx, self.timeline.count() - 1):
+            row: AchievementRow = self.timeline.itemAt(i).widget()
             try:
                 seconds = TimeFormatter.hf_to_ts(row.offset.text())
                 row.offset.setStyleSheet('color: black;')
@@ -242,18 +256,17 @@ class AchievementsTimelineApp(QtWidgets.QMainWindow):
                 row.offset.setStyleSheet('color: red;')
                 return
             if i == idx and i != 0:
-                cur_time = TimeFormatter.hf_to_ts(layout.itemAt(i - 1).widget().unlock_time.text())
+                cur_time = TimeFormatter.hf_to_ts(self.timeline.itemAt(i - 1).widget().unlock_time.text())
             row.unlock_time.setText(TimeFormatter.ts_to_hf(cur_time + seconds))
             cur_time = cur_time + seconds
         self.new_pt_value.setText(TimeFormatter.ts_to_hf(cur_time))
-
+        self.update_replay_data()
 
 
     def save_data(self):
-        layout = self.timeline_scroll.widget().layout()
         new_timeline = []
-        for i in range(layout.count() - 1):
-            row: AchievementRow = layout.itemAt(i).widget()
+        for i in range(self.timeline.count() - 1):
+            row: AchievementRow = self.timeline.itemAt(i).widget()
             new_timeline.append({
                 'offset': row.offset.text(),
                 'unlock_time': row.unlock_time.text()
@@ -263,6 +276,7 @@ class AchievementsTimelineApp(QtWidgets.QMainWindow):
             'api_key': self.api_key_value.text(),
             'vanity_name': self.vanity_name_value.text(),
             'app_id': self.app_id_value.text(),
+            'replay_time': self.replay_time_value.text(),
             'new_timeline': new_timeline
         }
         with open('current_data.json', 'w') as f:
@@ -270,7 +284,6 @@ class AchievementsTimelineApp(QtWidgets.QMainWindow):
 
 
     def load_data(self):
-        layout = self.timeline_scroll.widget().layout()
         if not os.path.isfile('current_data.json'):
             return
         with open('current_data.json', 'r') as f:
@@ -280,10 +293,43 @@ class AchievementsTimelineApp(QtWidgets.QMainWindow):
         self.app_id_value.setText(data['app_id'])
         self.fetch_data()
         for i, v in enumerate(data['new_timeline']):
-            row: AchievementRow = layout.itemAt(i).widget()
+            row: AchievementRow = self.timeline.itemAt(i).widget()
             row.offset.setText(v['offset'])
             row.unlock_time.setText(v['unlock_time'])
+        self.replay_time_value.setText(data['replay_time'])
         self.recalculate_timeline(0)
+
+
+    def update_replay_data(self):
+        try:
+            current_time = TimeFormatter.hf_to_ts(self.replay_time_value.text())
+            self.replay_time_value.setStyleSheet('color: black;')
+        except Exception:
+            self.replay_time_value.setStyleSheet('color: red;')
+            return
+        total_achievement_count = self.timeline.count() - 2
+        last_row: AchievementRow = self.timeline.itemAt(total_achievement_count).widget()
+        total_time = TimeFormatter.hf_to_ts(last_row.unlock_time.text())
+        current_achievemnt_count = 0
+        for i in range(self.timeline.count() - 1):
+            row: AchievementRow = self.timeline.itemAt(i).widget()
+            unlock_time = TimeFormatter.hf_to_ts(row.unlock_time.text())
+            if current_time > unlock_time:
+                current_achievemnt_count += 1
+                row.setStyleSheet("background-color: lightgreen;")
+            else:
+                row.setStyleSheet("background-color: white;")
+        QtWidgets.QApplication.processEvents()
+        self.replay_time_postfix.setText(f' / {TimeFormatter.ts_to_hf(total_time)} | {round(current_time/total_time*100, 1)}%')
+        self.replay_ach_count_value.setText(str(current_achievemnt_count))
+        self.replay_ach_count_postfix.setText(f' / {total_achievement_count} | {round(current_achievemnt_count/total_achievement_count*100, 1)}%')
+
+
+    def toggle_replay(self, checked):
+        if checked:
+            print('start')
+        else:
+            print('stop')
 
 
 if __name__ == '__main__':
