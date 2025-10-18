@@ -6,13 +6,13 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>600</width>
+    <width>800</width>
     <height>800</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>600</width>
+    <width>800</width>
     <height>800</height>
    </size>
   </property>
@@ -30,6 +30,12 @@
       <layout class="QHBoxLayout" name="horizontalLayout">
        <item>
         <widget class="QScrollArea" name="timeline_scroll">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="widgetResizable">
           <bool>true</bool>
          </property>
@@ -38,9 +44,15 @@
            <rect>
             <x>0</x>
             <y>0</y>
-            <width>293</width>
+            <width>555</width>
             <height>774</height>
            </rect>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_3"/>
          </widget>
